@@ -1,0 +1,21 @@
+[package]
+name = "prompttune"
+version = "0.1.0"
+description = "PromptTune - macOS Prompt Engineering & Tuning Studio"
+authors = ["PromptTune Team"]
+edition = "2021"
+
+[lib]
+name = "prompttune_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-http = { version = "~2.6", features = ["unsafe-headers"] }
+tauri-plugin-dialog = "2"

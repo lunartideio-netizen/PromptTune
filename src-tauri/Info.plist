@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PromptTune 需要访问麦克风以支持语音转文字与提示词语音输入功能。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PromptTune 需要使用语音识别服务将您的口述语音转换为提示词文本。</string>
+</dict>
+</plist>
