@@ -1,14 +1,25 @@
 import React from 'react';
 import { isTauri } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export const TrafficLights: React.FC = () => {
   const isDesktop = isTauri();
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent);
 
+  const handleMouseDown = async (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if (isDesktop) {
+      try {
+        await getCurrentWindow().startDragging();
+      } catch {}
+    }
+  };
+
   return (
     <div 
-      className="flex items-center h-10 px-4 select-none"
+      className="flex items-center h-10 px-4 select-none cursor-default"
       data-tauri-drag-region="true"
+      onMouseDown={handleMouseDown}
     >
       {/* 
         当运行在 Tauri 桌面端且为 macOS 时：

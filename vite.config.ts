@@ -18,5 +18,18 @@ export default defineConfig({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-libs': ['lucide-react', 'dexie', 'dexie-react-hooks', 'zustand'],
+          'vendor-tauri': ['@tauri-apps/api', '@tauri-apps/plugin-http', '@tauri-apps/plugin-dialog'],
+        },
+      },
+    },
+  },
   clearScreen: false,
 });
+

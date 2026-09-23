@@ -23,8 +23,7 @@ export function useKeyboardShortcuts({
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const modifier = isMac ? e.metaKey : e.ctrlKey;
+      const modifier = e.metaKey || e.ctrlKey;
 
       // 1. Cmd/Ctrl + Enter: 触发优化
       if (modifier && e.key === 'Enter') {

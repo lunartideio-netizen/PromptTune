@@ -24,6 +24,13 @@ interface AppStoreState {
   searchQuery: string;
   expandedFolderIds: Set<string>;
   
+  // Resizable & Collapsible Sidebar
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
+
   // Modals
   isSettingsOpen: boolean;
   contextModalFolderId: string | null;
@@ -171,6 +178,46 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   apiConfig: DEFAULT_API_CONFIG,
   searchQuery: '',
   expandedFolderIds: new Set<string>(),
+
+  // Resizable & Collapsible Sidebar
+  sidebarWidth: (() => {
+    try {
+      const stored = localStorage.getItem('prompttune_sidebar_width_v1');
+      if (stored) {
+        const val = parseInt(stored, 10);
+        if (!isNaN(val) && val >= 180 && val <= 520) return val;
+      }
+    } catch {}
+    return 260;
+  })(),
+  setSidebarWidth: (width: number) => {
+    const clamped = Math.min(Math.max(width, 180), 520);
+    try {
+      localStorage.setItem('prompttune_sidebar_width_v1', clamped.toString());
+    } catch {}
+    set({ sidebarWidth: clamped });
+  },
+  isSidebarCollapsed: (() => {
+    try {
+      return localStorage.getItem('prompttune_sidebar_collapsed_v1') === 'true';
+    } catch {
+      return false;
+    }
+  })(),
+  setIsSidebarCollapsed: (isSidebarCollapsed: boolean) => {
+    try {
+      localStorage.setItem('prompttune_sidebar_collapsed_v1', isSidebarCollapsed.toString());
+    } catch {}
+    set({ isSidebarCollapsed });
+  },
+  toggleSidebarCollapsed: () => {
+    const next = !get().isSidebarCollapsed;
+    try {
+      localStorage.setItem('prompttune_sidebar_collapsed_v1', next.toString());
+    } catch {}
+    set({ isSidebarCollapsed: next });
+  },
+
   isSettingsOpen: false,
   contextModalFolderId: null,
   isSkillHunterOpen: false,
