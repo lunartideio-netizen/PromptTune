@@ -19,6 +19,7 @@ export const TrafficLights: React.FC = () => {
     <div 
       className="flex items-center h-10 px-4 select-none cursor-default"
       data-tauri-drag-region="true"
+      style={{ WebkitAppRegion: 'drag' } as any}
       onMouseDown={handleMouseDown}
     >
       {/* 

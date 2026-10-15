@@ -48,10 +48,10 @@ export const FolderContextModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-sm animate-fade-in p-4">
-      <div className="bg-mac-surfaceElevated border border-mac-border rounded-2xl shadow-macModal w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in p-4">
+      <div className="bg-mac-surfaceElevated dark:bg-[#1c1c21] border border-mac-border dark:border-white/10 rounded-2xl shadow-macModal w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-mac-border flex items-center justify-between bg-white/70">
+        <div className="px-6 py-4 border-b border-mac-border dark:border-white/10 flex items-center justify-between bg-white/70 dark:bg-white/[0.04]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-mac-accentBlue/10 flex items-center justify-center text-mac-accentBlue">
               <Layers size={16} strokeWidth={1.75} />
@@ -67,7 +67,7 @@ export const FolderContextModal: React.FC = () => {
           </div>
           <button
             onClick={() => setContextModalFolderId(null)}
-            className="p-1.5 rounded-lg text-mac-textSecondary hover:text-mac-textPrimary hover:bg-black/5 transition-colors"
+            className="p-1.5 rounded-lg text-mac-textSecondary hover:text-mac-textPrimary hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X size={15} strokeWidth={1.75} />
           </button>
@@ -84,14 +84,14 @@ export const FolderContextModal: React.FC = () => {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-mac-canvas rounded-xl border border-mac-border focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary"
+              className="w-full px-3 py-2 text-sm bg-mac-canvas dark:bg-black/30 rounded-xl border border-mac-border dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary"
               placeholder="例如：移动端与全栈工程"
             />
           </div>
 
           {/* Ancestor Context Chain Preview */}
           {ancestors.length > 0 && (
-            <div className="p-3.5 bg-mac-canvasAlt/70 rounded-xl border border-mac-border space-y-2">
+            <div className="p-3.5 bg-mac-canvasAlt/70 dark:bg-white/[0.03] rounded-xl border border-mac-border dark:border-white/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-mac-textPrimary">
                   <GitBranch size={14} strokeWidth={1.75} className="text-mac-accentPurple" />
@@ -113,7 +113,7 @@ export const FolderContextModal: React.FC = () => {
                   {ancestors.map((item, idx) => (
                     <div
                       key={item.folderId}
-                      className="text-xs p-2 rounded-lg bg-white/90 border border-mac-border/80 flex items-start gap-2"
+                      className="text-xs p-2 rounded-lg bg-white/90 dark:bg-white/[0.04] border border-mac-border/80 dark:border-white/10 flex items-start gap-2"
                     >
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-mac-accentPurple/10 text-mac-accentPurple font-semibold">
                         L{idx + 1}
@@ -130,8 +130,8 @@ export const FolderContextModal: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center gap-2">
-                  <AlertCircle size={15} strokeWidth={1.75} className="text-amber-600 flex-shrink-0" />
+                <div className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800/60 flex items-center gap-2">
+                  <AlertCircle size={15} strokeWidth={1.75} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
                   <span>已关闭上级继承。该文件夹及其子项将仅应用本地设定的独立规则。</span>
                 </div>
               )}
@@ -153,7 +153,7 @@ export const FolderContextModal: React.FC = () => {
               rows={4}
               value={systemContext}
               onChange={(e) => setSystemContext(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-mac-canvas rounded-xl border border-mac-border focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary resize-none font-mono leading-relaxed"
+              className="w-full px-3 py-2 text-xs bg-mac-canvas rounded-xl border border-mac-border dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary resize-none font-mono leading-relaxed"
               placeholder="例如：你是一名资深全栈架构师，精通 React 19、TypeScript 与高并发设计。回答必须严谨、附带严密类型声明与异常兜底..."
             />
           </div>
@@ -173,14 +173,14 @@ export const FolderContextModal: React.FC = () => {
               rows={4}
               value={domainRules}
               onChange={(e) => setDomainRules(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-mac-canvas rounded-xl border border-mac-border focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary resize-none font-mono leading-relaxed"
+              className="w-full px-3 py-2 text-xs bg-mac-canvas rounded-xl border border-mac-border dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-mac-accentBlue/30 focus:border-mac-accentBlue text-mac-textPrimary resize-none font-mono leading-relaxed"
               placeholder="例如：&#10;1. 严禁提供伪代码，所有实现必须能够无警告直接编译&#10;2. 拒绝临时补丁，必须说明设计取舍与架构理由&#10;3. 所有异步网络请求必须绑定 AbortController..."
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-mac-border bg-mac-canvas/60 flex items-center justify-between">
+        <div className="px-6 py-3.5 border-t border-mac-border dark:border-white/10 bg-mac-canvasAlt/40 dark:bg-white/[0.03] flex items-center justify-between">
           <span className="text-xs text-mac-textSecondary">
             提示词优化与并发 A/B 测试将自动继承生效
           </span>
@@ -188,13 +188,13 @@ export const FolderContextModal: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setContextModalFolderId(null)}
-              className="px-4 py-1.5 text-xs font-medium text-mac-textSecondary hover:text-mac-textPrimary rounded-lg hover:bg-black/5 transition-colors"
+              className="px-4 py-1.5 text-xs font-medium text-mac-textSecondary hover:text-mac-textPrimary rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
             >
               取消
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-1.5 text-xs font-medium text-white bg-mac-accentBlue hover:bg-mac-accentBlueHover rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+              className="px-4 py-1.5 text-xs font-medium text-white bg-mac-accentBlue hover:bg-mac-accentBlueHover rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
             >
               {savedToast ? (
                 <>

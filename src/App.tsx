@@ -9,9 +9,20 @@ import { ABPlayground } from './components/workspace/ABPlayground';
 import { VariableExtractor } from './components/workspace/VariableExtractor';
 import { VersionHistory } from './components/workspace/VersionHistory';
 import { QuickScratchpad } from './components/workspace/QuickScratchpad';
-import { FolderContextModal } from './components/sidebar/FolderContextModal';
-import { SettingsModal } from './components/settings/SettingsModal';
-import { SkillHunterModal } from './components/skillhunter/SkillHunterModal';
+
+// 动态懒加载非首屏重型弹窗组件 (OPT-2)
+const FolderContextModal = React.lazy(() => 
+  import('./components/sidebar/FolderContextModal').then((m) => ({ default: m.FolderContextModal }))
+);
+const SettingsModal = React.lazy(() => 
+  import('./components/settings/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const CommandPalette = React.lazy(() => 
+  import('./components/common/CommandPalette').then((m) => ({ default: m.CommandPalette }))
+);
+const PromptDAGModal = React.lazy(() => 
+  import('./components/workspace/PromptDAGModal').then((m) => ({ default: m.PromptDAGModal }))
+);
 
 export const App: React.FC = () => {
   const { 
@@ -25,21 +36,94 @@ export const App: React.FC = () => {
     setSidebarWidth,
     isSidebarCollapsed,
     toggleSidebarCollapsed,
+    theme,
   } = useAppStore();
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isDAGModalOpen, setIsDAGModalOpen] = useState(false);
+
+  // 监听 Command Palette 等全局快捷动作
+  useEffect(() => {
+    const handleGlobalAction = (e: Event) => {
+      const customEvent = e as CustomEvent<{ action: string }>;
+      if (customEvent.detail?.action === 'open-dag') {
+        setIsDAGModalOpen(true);
+      }
+    };
+    window.addEventListener('prompttune:action', handleGlobalAction);
+    return () => window.removeEventListener('prompttune:action', handleGlobalAction);
+  }, []);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(sidebarWidth);
+
+  // macOS 沉浸式深浅色自适应监听
+  useEffect(() => {
+    const apply = () => {
+      const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    apply();
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = () => {
+      if (theme === 'system') apply();
+    };
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, [theme]);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // 全局快捷键：Cmd/Ctrl + K 呼出 Spotlight 全局命令面板
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const modifier = e.metaKey || e.ctrlKey;
+      if (!modifier) return;
+
+      // Cmd/Ctrl + K 呼出 Spotlight 全局命令面板
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd/Ctrl + Shift + C 呼出瘦身透镜
+      if (e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('prompttune:action', { detail: { action: 'open-compressor' } }));
+        return;
+      }
+
+      // Cmd/Ctrl + Shift + A 呼出健康体检
+      if (e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('prompttune:action', { detail: { action: 'open-audit' } }));
+        return;
+      }
+
+      // Cmd/Ctrl + Shift + E 呼出代码与 CI/CD 导出
+      if (e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('prompttune:action', { detail: { action: 'open-export-code' } }));
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 全局快捷键：Cmd/Ctrl + B 展开/折叠侧边栏
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const modifier = e.metaKey || e.ctrlKey;
-      if (modifier && (e.key === 'b' || e.key === 'B')) {
+      if (modifier && !e.shiftKey && (e.key === 'b' || e.key === 'B')) {
         const target = e.target as HTMLElement;
         const isEditing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         if (!isEditing) {
@@ -169,10 +253,19 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* 3. Global Dialogs & Modals */}
-      <FolderContextModal />
-      <SettingsModal />
-      <SkillHunterModal />
+      {/* 3. Global Dialogs & Modals (Lazy Loaded) */}
+      <React.Suspense fallback={null}>
+        <FolderContextModal />
+        <SettingsModal />
+        <CommandPalette 
+          isOpen={isCommandPaletteOpen} 
+          onClose={() => setIsCommandPaletteOpen(false)} 
+        />
+        <PromptDAGModal
+          isOpen={isDAGModalOpen}
+          onClose={() => setIsDAGModalOpen(false)}
+        />
+      </React.Suspense>
     </div>
   );
 };

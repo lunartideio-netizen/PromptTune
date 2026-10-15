@@ -259,21 +259,21 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
         top: `${coords.top}px`,
         left: `${coords.left}px`,
       }}
-      className="absolute z-50 w-72 md:w-80 max-h-72 flex flex-col bg-white/95 backdrop-blur-xl border border-[#E5E2D9] rounded-2xl shadow-xl overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
+      className="absolute z-50 w-72 md:w-80 max-h-72 flex flex-col bg-white/95 dark:bg-[#1c1c21]/95 backdrop-blur-xl border border-[#E5E2D9] dark:border-white/10 rounded-2xl shadow-xl overflow-hidden font-sans select-none animate-in fade-in zoom-in-95 duration-100"
     >
       {/* 头部微提示 */}
-      <div className="px-3 py-1.5 bg-[#FAF9F6] border-b border-[#E5E2D9] flex items-center justify-between text-[10px] text-[#6E6B65] shrink-0">
-        <span className="font-semibold flex items-center gap-1 text-indigo-700">
+      <div className="px-3 py-1.5 bg-[#FAF9F6] dark:bg-white/[0.04] border-b border-[#E5E2D9] dark:border-white/10 flex items-center justify-between text-[10px] text-[#6E6B65] dark:text-zinc-400 shrink-0">
+        <span className="font-semibold flex items-center gap-1 text-indigo-700 dark:text-indigo-400">
           <Sparkles size={11} strokeWidth={2} />
           <span>智能装配 · 输入 @ 唤起</span>
         </span>
-        <span className="text-[9px] text-[#9E9B95] font-mono">↑↓ 浏览 · ↵ 插入</span>
+        <span className="text-[9px] text-[#9E9B95] dark:text-zinc-500 font-mono">↑↓ 浏览 · ↵ 插入</span>
       </div>
 
       {/* 列表主体 */}
       <div className="flex-1 overflow-y-auto p-1.5 space-y-2 min-h-0">
         {allItems.length === 0 ? (
-          <div className="py-6 text-center text-xs text-[#9E9B95]">
+          <div className="py-6 text-center text-xs text-[#9E9B95] dark:text-zinc-500">
             未匹配到相关技能或提示词
           </div>
         ) : (
@@ -281,8 +281,8 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
             {/* 分组 1：已装技能 (Installed Skills) */}
             {filteredSkills.length > 0 && (
               <div>
-                <div className="px-2 py-1 text-[10px] font-bold text-[#6E6B65] uppercase tracking-wider flex items-center gap-1">
-                  <Zap size={11} strokeWidth={2} className="text-purple-600" />
+                <div className="px-2 py-1 text-[10px] font-bold text-[#6E6B65] dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                  <Zap size={11} strokeWidth={2} className="text-purple-600 dark:text-purple-400" />
                   <span>已装技能 ({filteredSkills.length})</span>
                 </div>
                 <div className="space-y-0.5">
@@ -299,20 +299,20 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
                         onMouseEnter={() => setSelectedIndex(itemIndex)}
                         className={`px-2.5 py-1.5 rounded-xl cursor-pointer transition-all flex items-center justify-between text-xs ${
                           isSelected
-                            ? 'bg-purple-50 border border-purple-200/80 text-purple-950 font-semibold'
-                            : 'hover:bg-black/5 text-[#2C2A29]'
+                            ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 text-purple-950 dark:text-purple-200 font-semibold'
+                            : 'hover:bg-black/5 dark:hover:bg-white/10 text-[#2C2A29] dark:text-zinc-200'
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
+                            isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
                           }`}>
                             <Zap size={11} strokeWidth={2} />
                           </div>
                           <div className="flex flex-col min-w-0">
                             <span className="truncate leading-tight">{skill.title}</span>
                             {skill.dimension && (
-                              <span className="text-[10px] text-[#9E9B95] truncate leading-tight">
+                              <span className="text-[10px] text-[#9E9B95] dark:text-zinc-400 truncate leading-tight">
                                 {skill.dimension}
                               </span>
                             )}
@@ -320,7 +320,7 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 ml-2">
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100/80 text-purple-700 font-mono">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100/80 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-mono">
                             {skill.framework}
                           </span>
                         </div>
@@ -334,8 +334,8 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
             {/* 分组 2：项目提示词 (Project Prompts) */}
             {filteredPrompts.length > 0 && (
               <div>
-                <div className="px-2 py-1 text-[10px] font-bold text-[#6E6B65] uppercase tracking-wider flex items-center gap-1">
-                  <FileText size={11} strokeWidth={2} className="text-indigo-600" />
+                <div className="px-2 py-1 text-[10px] font-bold text-[#6E6B65] dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                  <FileText size={11} strokeWidth={2} className="text-indigo-600 dark:text-indigo-400" />
                   <span>项目提示词 ({filteredPrompts.length})</span>
                 </div>
                 <div className="space-y-0.5">
@@ -353,13 +353,13 @@ export const MentionAutocomplete: React.FC<MentionAutocompleteProps> = ({
                         onMouseEnter={() => setSelectedIndex(itemIndex)}
                         className={`px-2.5 py-1.5 rounded-xl cursor-pointer transition-all flex items-center justify-between text-xs ${
                           isSelected
-                            ? 'bg-indigo-50 border border-indigo-200/80 text-indigo-950 font-semibold'
-                            : 'hover:bg-black/5 text-[#2C2A29]'
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-200 font-semibold'
+                            : 'hover:bg-black/5 dark:hover:bg-white/10 text-[#2C2A29] dark:text-zinc-200'
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'
+                            isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
                           }`}>
                             <FileText size={11} strokeWidth={2} />
                           </div>

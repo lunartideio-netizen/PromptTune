@@ -4,7 +4,17 @@ export type FrameworkType =
   | 'FEW_SHOT_COT'
   | 'ROLE_TASK_FORMAT'
   | 'STRICT_JSON'
-  | 'FREEFORM';
+  | 'FREEFORM'
+  | (string & {});
+
+export interface CustomFramework {
+  id: string;
+  name: string;
+  desc: string;
+  badge: string;
+  instruction?: string;
+  isCustom?: boolean;
+}
 
 export interface Folder {
   id: string;
@@ -18,6 +28,8 @@ export interface Folder {
   createdAt: number;
   updatedAt: number;
 }
+
+export type FolderItem = Folder;
 
 export interface PromptVersion {
   version: number;
@@ -53,6 +65,8 @@ export interface PromptVariable {
 export interface PromptItem {
   id: string;
   folderId: string | null;
+  /** 显式提示词链路父节点 ID，undefined/null 表示链路根节点 */
+  parentPromptId?: string | null;
   title: string;
   originalDraft: string;
   currentOptimized: string;
@@ -84,6 +98,10 @@ export interface APIConfig {
   maxTokens: number;
   topP: number;
   useMockFallback: boolean; // if true or if no key, provides rich offline mock stream
+  // 独立语音转写服务支持 (OPT-6)
+  sttBaseUrl?: string;
+  sttApiKey?: string;
+  sttModel?: string;
 }
 
 export interface ProviderPreset {

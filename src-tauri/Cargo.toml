@@ -1,6 +1,6 @@
 [package]
 name = "prompttune"
-version = "0.1.0"
+version = "0.2.0"
 description = "PromptTune - macOS Prompt Engineering & Tuning Studio"
 authors = ["PromptTune Team"]
 edition = "2021"

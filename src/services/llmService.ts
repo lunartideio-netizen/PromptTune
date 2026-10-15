@@ -102,6 +102,7 @@ export interface PromptReferenceResolution {
     promptId?: string;
     skillId?: string;
     resolvedSnippet?: string;
+    isCircular?: boolean;
   }[];
 }
 
@@ -116,7 +117,7 @@ export function resolvePromptReferences(
   text: string,
   allPrompts: PromptItem[],
   allSkills: SkillItem[] = [],
-  maxDepth = 3,
+  maxDepth = 10,
   visited = new Set<string>()
 ): PromptReferenceResolution {
   if (!text) return { resolvedText: '', references: [] };
@@ -135,6 +136,21 @@ export function resolvePromptReferences(
     );
 
     if (targetPrompt) {
+      if (visited.has(targetPrompt.id)) {
+        refRecords.push({
+          title: refTitle,
+          isResolved: false,
+          isCircular: true,
+          type: 'prompt',
+          id: targetPrompt.id,
+          promptId: targetPrompt.id,
+          resolvedSnippet: '[循环引用]',
+        });
+        const regex = new RegExp(`\\{\\{\\s*@${escapeRegExp(refTitle)}\\s*\\}\\}`, 'g');
+        currentText = currentText.replace(regex, () => `[循环引用: @${refTitle}]`);
+        continue;
+      }
+
       const targetContent = targetPrompt.currentOptimized?.trim() || targetPrompt.originalDraft?.trim() || '';
       refRecords.push({
         title: refTitle,
@@ -145,10 +161,11 @@ export function resolvePromptReferences(
         resolvedSnippet: targetContent.slice(0, 100),
       });
 
-      if (!visited.has(targetPrompt.id) && maxDepth > 1) {
+      if (maxDepth > 1) {
         const nextVisited = new Set(visited);
         nextVisited.add(targetPrompt.id);
         const nested = resolvePromptReferences(targetContent, allPrompts, allSkills, maxDepth - 1, nextVisited);
+        refRecords.push(...nested.references);
         const regex = new RegExp(`\\{\\{\\s*@${escapeRegExp(refTitle)}\\s*\\}\\}`, 'g');
         currentText = currentText.replace(regex, () => nested.resolvedText);
       } else {
@@ -164,6 +181,21 @@ export function resolvePromptReferences(
     );
 
     if (targetSkill) {
+      if (visited.has(targetSkill.id)) {
+        refRecords.push({
+          title: refTitle,
+          isResolved: false,
+          isCircular: true,
+          type: 'skill',
+          id: targetSkill.id,
+          skillId: targetSkill.id,
+          resolvedSnippet: '[循环引用]',
+        });
+        const regex = new RegExp(`\\{\\{\\s*@${escapeRegExp(refTitle)}\\s*\\}\\}`, 'g');
+        currentText = currentText.replace(regex, () => `[循环引用: @${refTitle}]`);
+        continue;
+      }
+
       let skillContent = targetSkill.distilledPrompt?.trim() || '';
       if (!skillContent) {
         const parts: string[] = [];
@@ -182,10 +214,11 @@ export function resolvePromptReferences(
         resolvedSnippet: skillContent.slice(0, 100),
       });
 
-      if (!visited.has(targetSkill.id) && maxDepth > 1) {
+      if (maxDepth > 1) {
         const nextVisited = new Set(visited);
         nextVisited.add(targetSkill.id);
         const nested = resolvePromptReferences(skillContent, allPrompts, allSkills, maxDepth - 1, nextVisited);
+        refRecords.push(...nested.references);
         const regex = new RegExp(`\\{\\{\\s*@${escapeRegExp(refTitle)}\\s*\\}\\}`, 'g');
         currentText = currentText.replace(regex, () => nested.resolvedText);
       } else {
@@ -502,6 +535,45 @@ export function isReasoningModel(modelName: string): boolean {
 }
 
 /**
+ * 检查当前模型是否具备视觉多模态能力 (Vision-capable)
+ */
+export function isVisionModel(modelName: string): boolean {
+  if (!modelName) return false;
+  const name = modelName.trim().toLowerCase();
+  return (
+    name.includes('vision') ||
+    name.includes('4o') ||
+    name.includes('claude-3') ||
+    name.includes('gemini') ||
+    name.includes('vl') ||
+    name.includes('pixtral') ||
+    name.includes('minicpm-v') ||
+    name.includes('llava')
+  );
+}
+
+/**
+ * 本地代理与常见模型别名自动映射与容错
+ * 例如将 localhost:10100 上的 gemini-3.8 自动映射为完整的 google-antigravity/gemini-3.8-flash
+ */
+export function resolveModelAlias(model: string, baseUrl: string = ''): string {
+  const trimmed = (model || '').trim();
+  if (baseUrl.includes('10100') || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+    const lower = trimmed.toLowerCase();
+    if (lower === 'gemini-3.8' || lower === 'gemini-3.8-flash' || lower === 'gemini3.8') {
+      return 'google-antigravity/gemini-3.8-flash';
+    }
+    if (lower === 'claude-sonnet' || lower === 'claude-sonnet-4-6' || lower === 'sonnet-4-6') {
+      return 'google-antigravity/claude-sonnet-4-6';
+    }
+    if (lower === 'claude-opus' || lower === 'claude-opus-4-6' || lower === 'opus-4-6') {
+      return 'google-antigravity/claude-opus-4-6-thinking';
+    }
+  }
+  return trimmed;
+}
+
+/**
  * 人性化错误状态码与异常转译
  */
 export function translateAPIError(error: any, status?: number): string {
@@ -584,12 +656,38 @@ export async function streamChat(
       headers['Authorization'] = `Bearer ${config.apiKey.trim()}`;
     }
 
-    const model = config.model || (isOllama ? 'llama3.2' : 'deepseek-chat');
+    const rawModel = config.model || (isOllama ? 'llama3.2' : 'deepseek-chat');
+    const model = resolveModelAlias(rawModel, config.baseUrl);
     const isSpecialReasoning = isReasoningModel(model);
+    const hasVisionCapability = isVisionModel(model);
+
+    // 针对非多模态模型安全降级：将包含 image_url 的多模态消息清洗为纯文本，防止服务端 400 崩溃
+    const sanitizedMessages = messages.map((m) => {
+      if (typeof m.content === 'string') return m;
+      if (Array.isArray(m.content)) {
+        if (hasVisionCapability) return m;
+        // 纯文本模型降级处理
+        const textParts: string[] = [];
+        let imageCount = 0;
+        for (const part of m.content) {
+          if (part.type === 'text') {
+            textParts.push(part.text);
+          } else if (part.type === 'image_url') {
+            imageCount++;
+          }
+        }
+        let mergedText = textParts.join('\n');
+        if (imageCount > 0) {
+          mergedText += `\n\n[系统提示：用户附带了 ${imageCount} 张参考图片，因当前模型 (${model}) 为纯文本模型，图片已在客户端安全忽略以防接口报错]`;
+        }
+        return { ...m, content: mergedText };
+      }
+      return m;
+    });
 
     const requestBody: Record<string, any> = {
       model,
-      messages,
+      messages: sanitizedMessages,
       stream: true,
       stream_options: { include_usage: true },
     };
@@ -798,11 +896,31 @@ export async function pingEndpoint(config: APIConfig): Promise<{
     const latencyMs = Date.now() - start;
 
     if (res.ok) {
+      let modelsFound: string[] = [];
+      try {
+        const data = await res.clone().json();
+        if (Array.isArray(data?.data)) {
+          modelsFound = data.data.map((item: any) => item.id || item.name).filter(Boolean);
+        } else if (Array.isArray(data?.models)) {
+          modelsFound = data.models.map((item: any) => item.name || item.id || item.model).filter(Boolean);
+        }
+      } catch {}
+
+      const currentModel = config.model?.trim();
+      let modelValidationMsg = '';
+      if (currentModel && modelsFound.length > 0) {
+        const hasExactModel = modelsFound.includes(currentModel) || modelsFound.some((m) => m.toLowerCase() === currentModel.toLowerCase());
+        if (!hasExactModel) {
+          const suggestions = modelsFound.slice(0, 3).join(', ');
+          modelValidationMsg = ` (提示: 端点未直接找到 "${currentModel}"，检索到模型: ${suggestions}${modelsFound.length > 3 ? ' 等' : ''})`;
+        }
+      }
+
       return {
         success: true,
         latencyMs,
         statusCode: res.status,
-        message: `端点连通正常 (HTTP ${res.status}, 实测延迟 ${latencyMs}ms)`,
+        message: `端点连通正常 (HTTP ${res.status}, 实测延迟 ${latencyMs}ms)${modelValidationMsg}`,
       };
     } else {
       const errText = await res.text().catch(() => res.statusText);
@@ -821,6 +939,90 @@ export async function pingEndpoint(config: APIConfig): Promise<{
       success: false,
       latencyMs,
       message: friendlyMsg,
+    };
+  }
+}
+
+/**
+ * 动态从 /v1/models 接口拉取远端端点支持的可用模型列表
+ */
+export async function fetchAvailableModels(config: APIConfig): Promise<{
+  success: boolean;
+  models: string[];
+  error?: string;
+}> {
+  const isOllama = config.provider === 'ollama';
+  const isLocal = isOllama || config.baseUrl.includes('localhost') || config.baseUrl.includes('127.0.0.1');
+  if (!config.apiKey?.trim() && !isLocal) {
+    return {
+      success: false,
+      models: [],
+      error: '请先填写 API Key 或选择本地运行服务',
+    };
+  }
+
+  const { modelsEndpoint } = normalizeBaseUrl(config.baseUrl);
+
+  try {
+    const headers: Record<string, string> = {
+      'HTTP-Referer': 'https://prompttune.local',
+      'X-Title': 'PromptTune macOS',
+    };
+    if (config.apiKey?.trim()) {
+      headers['Authorization'] = `Bearer ${config.apiKey.trim()}`;
+    }
+
+    let res = await universalFetch(modelsEndpoint, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(8000),
+    });
+
+    // 若 OpenAI 兼容端点返回非 200，且属于本地服务 (如端口 11434 或 Ollama)，尝试回退至原生 /api/tags
+    if (!res.ok && (config.baseUrl.includes('11434') || config.provider === 'ollama' || isLocal)) {
+      const { cleanBase } = normalizeBaseUrl(config.baseUrl);
+      const hostOrigin = cleanBase.replace(/\/v1\/?$/, '');
+      const nativeTagsUrl = `${hostOrigin}/api/tags`;
+      try {
+        const fallbackRes = await universalFetch(nativeTagsUrl, {
+          method: 'GET',
+          headers,
+          signal: AbortSignal.timeout(5000),
+        });
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+        }
+      } catch {}
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      return {
+        success: false,
+        models: [],
+        error: `${translateAPIError(new Error(errText), res.status)} (HTTP ${res.status})`,
+      };
+    }
+
+    const data = await res.json();
+    let modelList: string[] = [];
+
+    if (Array.isArray(data?.data)) {
+      modelList = data.data.map((item: any) => item.id || item.name).filter(Boolean);
+    } else if (Array.isArray(data?.models)) {
+      modelList = data.models.map((item: any) => item.name || item.id || item.model).filter(Boolean);
+    }
+
+    const unique = Array.from(new Set(modelList)).sort();
+    return {
+      success: true,
+      models: unique,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      models: [],
+      error: translateAPIError(err),
     };
   }
 }

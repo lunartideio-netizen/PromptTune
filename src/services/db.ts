@@ -7,8 +7,8 @@ export class PromptTuneDB extends Dexie {
   settings!: Table<{ key: string; value: any }, string>;
   skills!: Table<SkillItem, string>;
 
-  constructor() {
-    super('PromptTuneDB');
+  constructor(dbName = 'PromptTuneDB') {
+    super(dbName);
     this.version(1).stores({
       folders: 'id, parentId, name, order, createdAt',
       prompts: 'id, folderId, title, framework, createdAt, updatedAt',
@@ -20,16 +20,22 @@ export class PromptTuneDB extends Dexie {
       settings: 'key',
       skills: 'id, category, title, framework, createdAt, updatedAt',
     });
+    this.version(3).stores({
+      folders: 'id, parentId, name, order, createdAt',
+      prompts: 'id, folderId, parentPromptId, title, framework, createdAt, updatedAt',
+      settings: 'key',
+      skills: 'id, category, title, framework, createdAt, updatedAt',
+    });
   }
 }
 
 export const db = new PromptTuneDB();
 
 export const DEFAULT_API_CONFIG: APIConfig = {
-  provider: 'custom',
-  baseUrl: 'http://localhost:10100/v1',
-  apiKey: 'sk-opencodex',
-  model: 'gemini-3.8',
+  provider: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  model: 'gpt-4o',
   temperature: 0.7,
   maxTokens: 3000,
   topP: 0.95,
@@ -55,6 +61,10 @@ export async function initDatabase() {
   const settingsEntry = await db.settings.get('api_config');
   if (!settingsEntry || !settingsEntry.value || !settingsEntry.value.baseUrl) {
     await db.settings.put({ key: 'api_config', value: DEFAULT_API_CONFIG });
+  } else if (settingsEntry.value.baseUrl?.includes('10100') && settingsEntry.value.model === 'gemini-3.8') {
+    // 自动修正历史遗留的无效简写模型名称
+    const upgraded = { ...settingsEntry.value, model: 'google-antigravity/gemini-3.8-flash' };
+    await db.settings.put({ key: 'api_config', value: upgraded });
   }
 
   // Seed default skills ONLY ONCE on first installation

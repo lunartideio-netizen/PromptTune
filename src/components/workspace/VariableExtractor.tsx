@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { PromptVariable } from '../../types';
 import { substituteVariables, extractVariablesFromText, resolvePromptReferences } from '../../services/llmService';
-import { Code2, Plus, Trash2, Check, Copy, Eye, Sparkles, Link, ArrowRight, AlertCircle, Zap } from 'lucide-react';
+import { Code2, Plus, Trash2, Check, Copy, Eye, Sparkles, Link, ArrowRight, AlertCircle, Zap, TableProperties } from 'lucide-react';
+import { BatchDatasetMatrix } from './BatchDatasetMatrix';
 
 export const VariableExtractor: React.FC = () => {
   const { 
@@ -16,8 +17,11 @@ export const VariableExtractor: React.FC = () => {
     scratchpadDraft,
     scratchpadOptimized,
     scratchpadVariables,
-    setScratchpadVariables
+    setScratchpadVariables,
+    getFolderAncestors,
   } = useAppStore();
+
+  const [viewMode, setViewMode] = useState<'single' | 'batch'>('single');
 
   const currentPrompt = prompts.find((p) => p.id === activePromptId);
   const isScratchpadMode = isScratchpadActive || !currentPrompt;
@@ -29,6 +33,13 @@ export const VariableExtractor: React.FC = () => {
   const promptText = isScratchpadMode 
     ? (scratchpadOptimized || scratchpadDraft)
     : (currentPrompt?.currentOptimized || currentPrompt?.originalDraft || '');
+
+  const ancestors = currentPrompt ? getFolderAncestors(currentPrompt.folderId) : [];
+  const systemContext = ancestors
+    .map((a) => [a.systemContext, a.domainRules].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n');
+  const title = isScratchpadMode ? '单次独立优化提示词' : (currentPrompt?.title || 'Prompt');
 
   const variables = isScratchpadMode
     ? scratchpadVariables
@@ -128,17 +139,58 @@ export const VariableExtractor: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleAutoScan}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-mac-border hover:bg-white text-mac-textPrimary text-xs font-medium transition-all shadow-sm"
-        >
-          <Sparkles size={13} strokeWidth={1.75} className="text-mac-accentPurple" />
-          重新扫描正文占位符
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 模式切换器 (FEAT-2) */}
+          <div className="flex items-center p-1 bg-black/[0.04] dark:bg-white/[0.04] rounded-xl border border-mac-border/50">
+            <button
+              type="button"
+              onClick={() => setViewMode('single')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg transition-all ${
+                viewMode === 'single'
+                  ? 'bg-white dark:bg-[#2b2b36] text-mac-accentPurple shadow-xs font-semibold'
+                  : 'text-mac-textSecondary hover:text-mac-textPrimary'
+              }`}
+            >
+              <Code2 size={13} />
+              <span>单例调试与预览</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('batch')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg transition-all ${
+                viewMode === 'batch'
+                  ? 'bg-white dark:bg-[#2b2b36] text-mac-accentPurple shadow-xs font-semibold'
+                  : 'text-mac-textSecondary hover:text-mac-textPrimary'
+              }`}
+            >
+              <TableProperties size={13} />
+              <span>批量并发评测矩阵</span>
+            </button>
+          </div>
+
+          {viewMode === 'single' && (
+            <button
+              onClick={handleAutoScan}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-mac-border dark:border-white/10 bg-mac-surface dark:bg-white/[0.05] hover:bg-black/5 dark:hover:bg-white/10 text-mac-textPrimary text-xs font-medium transition-all shadow-sm cursor-pointer"
+            >
+              <Sparkles size={13} strokeWidth={1.75} className="text-mac-accentPurple" />
+              重新扫描占位符
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* 跨提示词与已装技能 @ 引用链路 (Prompt & Skill Chaining) */}
-      <div className="bg-mac-surface backdrop-blur-xl border border-mac-border rounded-2xl p-4 shadow-mac">
+      {viewMode === 'batch' ? (
+        <BatchDatasetMatrix
+          title={title}
+          promptText={promptText}
+          systemContext={systemContext}
+          variables={variables}
+        />
+      ) : (
+        <>
+          {/* 跨提示词与已装技能 @ 引用链路 (Prompt & Skill Chaining) */}
+      <div className="bg-mac-surface backdrop-blur-xl border border-mac-border dark:border-white/10 rounded-2xl p-4 shadow-mac">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
             <Link size={15} strokeWidth={2} className="text-mac-accentBlue" />
@@ -156,7 +208,7 @@ export const VariableExtractor: React.FC = () => {
             {refResult.references.map((ref, idx) => (
               <div
                 key={idx}
-                className="p-3 bg-white/90 rounded-xl border border-mac-border flex items-center justify-between gap-3 text-xs"
+                className="p-3 bg-white/90 dark:bg-white/[0.04] rounded-xl border border-mac-border dark:border-white/10 flex items-center justify-between gap-3 text-xs"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <span className={`font-mono font-semibold px-2 py-0.5 rounded-lg text-xs flex-shrink-0 ${
@@ -243,7 +295,7 @@ export const VariableExtractor: React.FC = () => {
             {variables.map((v, idx) => (
               <div
                 key={idx}
-                className="p-3 bg-white/90 rounded-xl border border-mac-border flex flex-col md:flex-row items-start md:items-center gap-3"
+                className="p-3 bg-white/90 dark:bg-white/[0.04] rounded-xl border border-mac-border dark:border-white/10 flex flex-col md:flex-row items-start md:items-center gap-3"
               >
                 {/* Variable name badge */}
                 <div className="flex items-center gap-1.5 min-w-[130px]">
@@ -259,7 +311,7 @@ export const VariableExtractor: React.FC = () => {
                     value={v.description || ''}
                     onChange={(e) => handleUpdateVar(idx, 'description', e.target.value)}
                     placeholder="变量说明（选填）..."
-                    className="w-full text-xs px-2.5 py-1.5 bg-mac-canvas rounded-lg border border-mac-border focus:outline-none focus:ring-1 focus:ring-mac-accentPurple text-mac-textPrimary"
+                    className="w-full text-xs px-2.5 py-1.5 bg-mac-canvas rounded-lg border border-mac-border dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-mac-accentPurple text-mac-textPrimary"
                   />
                 </div>
 
@@ -270,14 +322,14 @@ export const VariableExtractor: React.FC = () => {
                     value={v.currentValue || ''}
                     onChange={(e) => handleUpdateVar(idx, 'currentValue', e.target.value)}
                     placeholder="当前测试值（例如：具体测试用例）..."
-                    className="w-full text-xs px-2.5 py-1.5 bg-mac-canvas rounded-lg border border-mac-border focus:outline-none focus:ring-1 focus:ring-mac-accentBlue text-mac-textPrimary font-mono"
+                    className="w-full text-xs px-2.5 py-1.5 bg-mac-canvas rounded-lg border border-mac-border dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-mac-accentBlue text-mac-textPrimary font-mono"
                   />
                 </div>
 
                 {/* Delete button */}
                 <button
                   onClick={() => handleDeleteVar(idx)}
-                  className="p-1.5 rounded-lg text-mac-textSecondary hover:text-red-500 hover:bg-black/5"
+                  className="p-1.5 rounded-lg text-mac-textSecondary hover:text-red-500 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
                   title="删除变量"
                 >
                   <Trash2 size={13} strokeWidth={1.75} />
@@ -286,30 +338,30 @@ export const VariableExtractor: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className="py-8 text-center text-xs text-mac-textMuted border border-dashed border-mac-border rounded-xl">
+          <div className="py-8 text-center text-xs text-mac-textMuted border border-dashed border-mac-border dark:border-white/10 rounded-xl">
             暂未提取到动态变量。在提示词中输入 <code className="font-mono text-mac-accentPurple">{'{{变量名}}'}</code> 即可自动检测！
           </div>
         )}
 
         {/* Add custom variable manually */}
-        <div className="mt-3 pt-3 border-t border-mac-border/60 flex items-center gap-2">
+        <div className="mt-3 pt-3 border-t border-mac-border/60 dark:border-white/10 flex items-center gap-2">
           <input
             type="text"
             placeholder="新变量标识 (如 user_name)"
             value={newVarName}
             onChange={(e) => setNewVarName(e.target.value)}
-            className="w-44 text-xs px-3 py-1.5 bg-mac-canvas rounded-lg border border-mac-border focus:outline-none focus:ring-1 focus:ring-mac-accentPurple font-mono"
+            className="w-44 text-xs px-3 py-1.5 bg-mac-canvas rounded-lg border border-mac-border dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-mac-accentPurple font-mono text-mac-textPrimary"
           />
           <input
             type="text"
             placeholder="变量用途说明..."
             value={newVarDesc}
             onChange={(e) => setNewVarDesc(e.target.value)}
-            className="flex-1 text-xs px-3 py-1.5 bg-mac-canvas rounded-lg border border-mac-border focus:outline-none focus:ring-1 focus:ring-mac-accentPurple"
+            className="flex-1 text-xs px-3 py-1.5 bg-mac-canvas rounded-lg border border-mac-border dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-mac-accentPurple text-mac-textPrimary"
           />
           <button
             onClick={handleAddVar}
-            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-mac-accentPurple hover:opacity-90 rounded-lg flex items-center gap-1 shadow-sm"
+            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-mac-accentPurple hover:opacity-90 rounded-lg flex items-center gap-1 shadow-sm cursor-pointer"
           >
             <Plus size={13} strokeWidth={2} />
             添加变量
@@ -318,7 +370,7 @@ export const VariableExtractor: React.FC = () => {
       </div>
 
       {/* Live Preview with Variables Injected */}
-      <div className="bg-mac-surface backdrop-blur-xl border border-mac-border rounded-2xl p-4 shadow-mac flex flex-col flex-1">
+      <div className="bg-mac-surface backdrop-blur-xl border border-mac-border dark:border-white/10 rounded-2xl p-4 shadow-mac flex flex-col flex-1">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Eye size={14} strokeWidth={1.75} className="text-mac-accentBlue" />
@@ -329,7 +381,7 @@ export const VariableExtractor: React.FC = () => {
 
           <button
             onClick={handleCopyPreview}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border border-mac-border hover:bg-white text-mac-textPrimary transition-all shadow-sm"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border border-mac-border dark:border-white/10 bg-mac-surface dark:bg-white/[0.05] hover:bg-black/5 dark:hover:bg-white/10 text-mac-textPrimary transition-all shadow-sm cursor-pointer"
           >
             {copied ? (
               <>
@@ -345,10 +397,12 @@ export const VariableExtractor: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex-1 w-full bg-white/90 rounded-xl border border-mac-border p-3.5 text-xs text-mac-textPrimary font-mono leading-relaxed overflow-y-auto whitespace-pre-wrap select-text min-h-[160px]">
+        <div className="flex-1 w-full bg-mac-canvas rounded-xl border border-mac-border dark:border-white/10 p-3.5 text-xs text-mac-textPrimary font-mono leading-relaxed overflow-y-auto whitespace-pre-wrap select-text min-h-[160px]">
           {previewText}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

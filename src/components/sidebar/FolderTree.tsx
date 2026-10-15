@@ -18,8 +18,10 @@ import {
   Download,
   Copy,
   FolderInput,
-  X
+  X,
+  GitFork,
 } from 'lucide-react';
+
 import { confirmAction } from '../../utils/dialog';
 
 interface ContextMenuState {
@@ -53,8 +55,8 @@ export const FolderTree: React.FC = () => {
     deleteFolder,
     deletePrompt,
     setSearchQuery,
-    setIsSkillHunterOpen,
     exportFolderMasterBundle,
+    createChildPrompt,
   } = useAppStore();
 
   const [creatingInFolder, setCreatingInFolder] = useState<string | null>(null);
@@ -76,6 +78,34 @@ export const FolderTree: React.FC = () => {
 
   // 跨目录移动弹窗状态
   const [movingPromptId, setMovingPromptId] = useState<string | null>(null);
+
+  // 提示词子链路折叠状态 (支持收起长链路)
+  const [collapsedPromptChainIds, setCollapsedPromptChainIds] = useState<Set<string>>(new Set());
+
+  const togglePromptChainCollapse = (promptId: string) => {
+    setCollapsedPromptChainIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(promptId)) next.delete(promptId);
+      else next.add(promptId);
+      return next;
+    });
+  };
+
+  // 计算某个提示词下游挂载的所有子孙节点数量
+  const getDescendantCount = (promptId: string) => {
+    const toDelete = new Set<string>([promptId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of prompts) {
+        if (p.parentPromptId && toDelete.has(p.parentPromptId) && !toDelete.has(p.id)) {
+          toDelete.add(p.id);
+          changed = true;
+        }
+      }
+    }
+    return toDelete.size - 1;
+  };
 
   // 自动聚焦并全选重命名输入框
   useEffect(() => {
@@ -321,7 +351,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 onBlur={handleRenameSubmit}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
-                className="text-xs bg-white text-mac-textPrimary px-1.5 py-0.5 rounded border border-mac-accentBlue focus:outline-none focus:ring-1 focus:ring-mac-accentBlue flex-1 shadow-2xs font-medium"
+                className="text-xs bg-white dark:bg-zinc-800 text-mac-textPrimary px-1.5 py-0.5 rounded border border-mac-accentBlue focus:outline-none focus:ring-1 focus:ring-mac-accentBlue flex-1 shadow-2xs font-medium"
               />
             ) : (
               <span 
@@ -356,7 +386,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 e.stopPropagation();
                 setEditingItem({ id: folder.id, type: 'folder', text: folder.name });
               }}
-              className="p-1 rounded text-mac-textSecondary hover:text-mac-accentBlue hover:bg-black/5"
+              className="p-1 rounded text-mac-textSecondary hover:text-mac-accentBlue hover:bg-black/5 dark:hover:bg-white/10"
             >
               <Pencil size={12} />
             </button>
@@ -375,7 +405,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                     setExportMenuFolderId(folder.id);
                   }
                 }}
-                className="p-1 rounded text-mac-textSecondary hover:text-mac-accentAmber hover:bg-black/5"
+                className="p-1 rounded text-mac-textSecondary hover:text-mac-accentAmber hover:bg-black/5 dark:hover:bg-white/10"
               >
                 <Box size={13} />
               </button>
@@ -383,11 +413,11 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
               {exportMenuFolderId === folder.id && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className={`absolute right-0 z-30 w-48 bg-white rounded-xl shadow-macModal border border-mac-border py-1 text-xs animate-scale-in ${
+                  className={`absolute right-0 z-30 w-48 bg-white dark:bg-[#1c1c21] rounded-xl shadow-macModal border border-mac-border dark:border-white/10 py-1 text-xs animate-scale-in ${
                     exportMenuPlacement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
                   }`}
                 >
-                  <div className="px-3 py-1 text-[10px] font-bold text-mac-textMuted uppercase border-b border-mac-border/50">
+                  <div className="px-3 py-1 text-[10px] font-bold text-mac-textMuted uppercase border-b border-mac-border/50 dark:border-white/10">
                     导出项目提示词包
                   </div>
                   <button
@@ -454,7 +484,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
         {/* Sub-folder input */}
         {creatingInFolder === folder.id && (
           <div style={{ paddingLeft: `${(depth + 1) * 12 + 10}px` }} className="py-1 pr-2">
-            <div className="flex items-center gap-1.5 bg-white rounded-lg border border-mac-accentBlue/40 px-2 py-1 shadow-sm">
+            <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 rounded-lg border border-mac-accentBlue/40 dark:border-blue-500/30 px-2 py-1 shadow-sm">
               <Folder size={13} className="text-mac-accentAmber flex-shrink-0" />
               <input
                 type="text"
@@ -485,23 +515,96 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
             {childFolders.map((sub) => renderFolder(sub, depth + 1))}
 
             {/* Prompts in this folder */}
-            {folderPrompts.map((prompt) => renderPromptItem(prompt, depth + 1))}
+            {renderPromptTree(folderPrompts, depth + 1)}
           </div>
         )}
       </div>
     );
   };
 
-  // 渲染单个提示词节点 (极简纯净排版：100% 空间给文件名)
-  const renderPromptItem = (prompt: PromptItem, depth = 0) => {
+  // 递归渲染提示词树（支持 N 级链路与分支）
+  const renderPromptTree = (promptsList: PromptItem[], folderDepth = 0) => {
+    const promptIdSet = new Set(promptsList.map((p) => p.id));
+    const childrenMap = new Map<string, PromptItem[]>();
+    const topLevelPrompts: PromptItem[] = [];
+
+    promptsList.forEach((p) => {
+      if (p.parentPromptId && promptIdSet.has(p.parentPromptId)) {
+        const list = childrenMap.get(p.parentPromptId) || [];
+        list.push(p);
+        childrenMap.set(p.parentPromptId, list);
+      } else {
+        topLevelPrompts.push(p);
+      }
+    });
+
+    // 统计某个节点下游所有的链路步骤数量
+    const collectChainSequence = (
+      nodeId: string,
+      currentLevel = 2
+    ): { prompt: PromptItem; level: number }[] => {
+      const kids = childrenMap.get(nodeId) || [];
+      const seq: { prompt: PromptItem; level: number }[] = [];
+      for (const kid of kids) {
+        seq.push({ prompt: kid, level: currentLevel });
+        seq.push(...collectChainSequence(kid.id, currentLevel + 1));
+      }
+      return seq;
+    };
+
+    return topLevelPrompts.map((rootPrompt) => {
+      const chainSteps = collectChainSequence(rootPrompt.id, 2);
+      const hasChain = chainSteps.length > 0;
+      const isCollapsed = collapsedPromptChainIds.has(rootPrompt.id);
+      const rootPaddingLeft = folderDepth * 12 + 10;
+
+      return (
+        <div key={rootPrompt.id} className="space-y-0.5">
+          {renderPromptItem(
+            rootPrompt,
+            rootPaddingLeft,
+            1,
+            hasChain,
+            isCollapsed,
+            hasChain ? () => togglePromptChainCollapse(rootPrompt.id) : undefined,
+            chainSteps.length
+          )}
+          {hasChain && !isCollapsed && (
+            <div
+              style={{ marginLeft: `${rootPaddingLeft + 14}px` }}
+              className="border-l-2 border-purple-300/80 dark:border-purple-500/50 pl-2 my-0.5 space-y-0.5"
+            >
+              {chainSteps.map((step) => (
+                <React.Fragment key={step.prompt.id}>
+                  {renderPromptItem(step.prompt, 4, step.level, false, false, undefined)}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  // 渲染单个提示词节点 (整齐管线排版)
+  const renderPromptItem = (
+    prompt: PromptItem,
+    paddingLeftPx: number,
+    chainLevel = 1,
+    hasChildren = false,
+    isChainCollapsed = false,
+    onToggleCollapse?: () => void,
+    totalChainSteps?: number
+  ) => {
     const isActive = activePromptId === prompt.id && !isScratchpadActive;
     const isEditing = editingItem?.id === prompt.id && editingItem?.type === 'prompt';
+    const isChild = chainLevel > 1;
 
     return (
       <div
         key={prompt.id}
-        style={{ paddingLeft: `${depth * 12 + 16}px` }}
-        className={`group flex items-center justify-between py-1.5 pr-2 rounded-xl transition-all cursor-pointer ${
+        style={{ paddingLeft: `${paddingLeftPx}px` }}
+        className={`group flex items-center justify-between h-[30px] pr-2 rounded-xl transition-all cursor-pointer ${
           isActive
             ? 'bg-mac-accentBlue text-white shadow-sm font-medium'
             : 'text-mac-textPrimary hover:bg-black/[0.04]'
@@ -515,12 +618,44 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
         onContextMenu={(e) => handleContextMenu(e, 'prompt', prompt.id)}
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <FileText
-            size={13}
-            className={`flex-shrink-0 ${
-              isActive ? 'text-white' : 'text-mac-textSecondary'
-            }`}
-          />
+          {/* 根节点链路总折叠/展开按钮 */}
+          {hasChildren && onToggleCollapse && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCollapse();
+              }}
+              className={`p-0.5 rounded hover:bg-black/10 transition-colors flex-shrink-0 cursor-pointer ${
+                isActive ? 'text-white' : 'text-mac-textSecondary'
+              }`}
+              title={isChainCollapsed ? "展开整条下游链路" : "折叠整条下游链路"}
+            >
+              {isChainCollapsed ? (
+                <ChevronRight size={10} className="stroke-[2.5]" />
+              ) : (
+                <ChevronDown size={10} className="stroke-[2.5]" />
+              )}
+            </button>
+          )}
+
+          {/* 区分根提示词与链路子分支图标 */}
+          {isChild ? (
+            <GitFork
+              size={12}
+              className={`flex-shrink-0 ${
+                isActive ? 'text-white' : 'text-purple-500'
+              }`}
+            />
+          ) : (
+            <FileText
+              size={13}
+              className={`flex-shrink-0 ${
+                isActive ? 'text-white' : 'text-mac-textSecondary'
+              }`}
+            />
+          )}
+
 
           {isEditing ? (
             <input
@@ -532,7 +667,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
               onBlur={handleRenameSubmit}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
-              className="text-xs bg-white text-mac-textPrimary px-1.5 py-0.5 rounded border border-mac-accentBlue focus:outline-none focus:ring-1 focus:ring-mac-accentBlue flex-1 shadow-2xs font-medium"
+              className="text-xs bg-white dark:bg-zinc-800 text-mac-textPrimary px-1.5 py-0.5 rounded border border-mac-accentBlue focus:outline-none focus:ring-1 focus:ring-mac-accentBlue flex-1 shadow-2xs font-medium"
             />
           ) : (
             <span 
@@ -548,51 +683,99 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
           )}
         </div>
 
-        {/* 悬浮操作栏 */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* 重命名 */}
-          <button
-            title="重命名提示词 (支持双击名称)"
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingItem({ id: prompt.id, type: 'prompt', text: prompt.title });
-            }}
-            className={`p-1 rounded transition-colors ${
-              isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 text-mac-textSecondary hover:text-mac-accentBlue'
-            }`}
-          >
-            <Pencil size={12} />
-          </button>
+        {/* 右侧区域：固定高度容器，未悬浮时展示步数/层级标签，悬浮时平滑切换为操作图标，零高度跳动 */}
+        <div className="flex items-center gap-1 flex-shrink-0 ml-1 h-full">
+          {/* 根节点提示词标记链路步数 (悬浮时隐藏) */}
+          {!isChild && totalChainSteps && totalChainSteps > 0 ? (
+            <span
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full font-semibold group-hover:hidden transition-all flex-shrink-0 ${
+                isActive
+                  ? 'bg-white/20 text-white'
+                  : 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60'
+              }`}
+              title={`包含 ${totalChainSteps} 级后续步骤链路`}
+            >
+              {`+${totalChainSteps}步`}
+            </span>
+          ) : null}
 
-          {/* 复制副本 (Duplicate) */}
-          <button
-            title="复制副本 (Duplicate)"
-            onClick={async (e) => {
-              e.stopPropagation();
-              await duplicatePrompt(prompt.id);
-            }}
-            className={`p-1 rounded transition-colors ${
-              isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 text-mac-textSecondary hover:text-purple-600'
-            }`}
-          >
-            <Copy size={12} />
-          </button>
+          {isChild && (
+            <span
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full font-semibold group-hover:hidden transition-all flex-shrink-0 ${
+                isActive
+                  ? 'bg-white/20 text-white'
+                  : 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300'
+              }`}
+              title={`提示词工程链路第 ${chainLevel} 级`}
+            >
+              {'L' + chainLevel}
+            </span>
+          )}
 
-          {/* 删除 */}
-          <button
-            title="删除提示词"
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (await confirmAction(`确定删除提示词「${prompt.title}」吗？`)) {
-                deletePrompt(prompt.id);
-              }
-            }}
-            className={`p-1 rounded transition-opacity ${
-              isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 text-mac-textSecondary hover:text-red-500'
-            }`}
-          >
-            <Trash2 size={12} />
-          </button>
+          {/* 悬浮内联按钮：固定 20px 按钮高度，严格在行高内垂直居中 */}
+          <div className="hidden group-hover:flex items-center gap-0.5 h-full">
+            {/* 快捷继续链路 */}
+            <button
+              title="基于此提示词派生下一级链路"
+              onClick={async (e) => {
+                e.stopPropagation();
+                await createChildPrompt(prompt.id);
+              }}
+              className={`p-1 w-5 h-5 flex items-center justify-center rounded transition-colors cursor-pointer ${
+                isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-purple-100 dark:hover:bg-purple-900/30 text-mac-textSecondary hover:text-purple-700 dark:hover:text-purple-300'
+              }`}
+            >
+              <GitFork size={12} />
+            </button>
+
+            {/* 重命名 */}
+            <button
+              title="重命名 (支持双击)"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingItem({ id: prompt.id, type: 'prompt', text: prompt.title });
+              }}
+              className={`p-1 w-5 h-5 flex items-center justify-center rounded transition-colors cursor-pointer ${
+                isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-mac-textSecondary hover:text-mac-accentBlue'
+              }`}
+            >
+              <Pencil size={12} />
+            </button>
+
+            {/* 复制副本 */}
+            <button
+              title="复制副本"
+              onClick={async (e) => {
+                e.stopPropagation();
+                await duplicatePrompt(prompt.id);
+              }}
+              className={`p-1 w-5 h-5 flex items-center justify-center rounded transition-colors cursor-pointer ${
+                isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-mac-textSecondary hover:text-purple-600'
+              }`}
+            >
+              <Copy size={12} />
+            </button>
+
+            {/* 删除 */}
+            <button
+              title="删除"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const descendants = getDescendantCount(prompt.id);
+                const message = descendants > 0
+                  ? `确定删除「${prompt.title}」及其后续 ${descendants} 个下游链路提示词吗？整条链路将一并删除。`
+                  : `确定删除提示词「${prompt.title}」吗？`;
+                if (await confirmAction(message)) {
+                  deletePrompt(prompt.id);
+                }
+              }}
+              className={`p-1 w-5 h-5 flex items-center justify-center rounded transition-opacity cursor-pointer ${
+                isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-black/5 dark:hover:bg-white/10 text-mac-textSecondary hover:text-red-500'
+              }`}
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -605,7 +788,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
     <div className="flex flex-col h-full relative select-none">
       {/* 顶部搜索与单次独立优化 */}
       <div className="px-3 pb-2 pt-1 flex items-center gap-1.5">
-        <div className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-black/[0.03] border border-mac-border/60 focus-within:bg-white focus-within:border-mac-accentBlue focus-within:ring-2 focus-within:ring-mac-accentBlue/10 transition-all">
+        <div className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-mac-border/60 dark:border-white/10 focus-within:bg-white dark:focus-within:bg-zinc-800 focus-within:border-mac-accentBlue focus-within:ring-2 focus-within:ring-mac-accentBlue/10 transition-all">
           <Search size={13} className="text-mac-textSecondary flex-shrink-0" />
           <input
             type="text"
@@ -614,6 +797,24 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full text-xs bg-transparent focus:outline-none text-mac-textPrimary placeholder:text-mac-textMuted"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="p-0.5 text-mac-textMuted hover:text-mac-textPrimary rounded cursor-pointer"
+              title="清空搜索"
+            >
+              <X size={12} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+            className="text-[10px] font-mono px-1 py-0.2 rounded bg-black/5 dark:bg-white/10 text-mac-textMuted hover:text-mac-textPrimary transition-colors flex-shrink-0 cursor-pointer"
+            title="快捷键 Cmd+K / Ctrl+K 呼出聚焦命令面板"
+          >
+            ⌘K
+          </button>
         </div>
 
         {/* 快速独立优化 */}
@@ -626,33 +827,10 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
           className={`p-2 rounded-xl border transition-all flex items-center justify-center flex-shrink-0 cursor-pointer ${
             isScratchpadActive
               ? 'bg-mac-accentBlue text-white border-mac-accentBlue shadow-sm'
-              : 'bg-white hover:bg-black/[0.04] text-mac-textSecondary hover:text-mac-textPrimary border-mac-border/70 shadow-sm'
+              : 'bg-mac-surface dark:bg-white/[0.05] hover:bg-black/[0.04] dark:hover:bg-white/10 text-mac-textSecondary hover:text-mac-textPrimary border-mac-border/70 dark:border-white/10 shadow-sm'
           }`}
         >
           <Pencil size={14} />
-        </button>
-      </div>
-
-      {/* AI 技能中心常驻入口 */}
-      <div className="px-3 pb-2 pt-0.5">
-        <button
-          onClick={() => setIsSkillHunterOpen(true)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-purple-500/20 hover:border-purple-500/40 text-mac-textPrimary hover:bg-gradient-to-r hover:from-indigo-500/15 hover:via-purple-500/15 hover:to-pink-500/15 transition-all shadow-xs group cursor-pointer"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-xs group-hover:scale-110 transition-transform">
-              <Sparkles size={12} />
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-                AI 技能猎手
-              </span>
-              <span className="text-[10px] text-mac-textMuted leading-none mt-0.5">全网高赞专家技能库</span>
-            </div>
-          </div>
-          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-700 font-bold group-hover:bg-purple-500/25 transition-colors">
-            PRO
-          </span>
         </button>
       </div>
 
@@ -663,7 +841,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
           <button
             title="新建根文件夹"
             onClick={() => setIsCreatingRootFolder(true)}
-            className="p-1 rounded-lg hover:bg-black/5 text-mac-textSecondary hover:text-mac-textPrimary transition-colors cursor-pointer"
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-mac-textSecondary hover:text-mac-textPrimary transition-colors cursor-pointer"
           >
             <FolderPlus size={14} />
           </button>
@@ -672,7 +850,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
             onClick={async () => {
               await createPrompt(null, '新建提示词');
             }}
-            className="p-1 rounded-lg hover:bg-black/5 text-mac-textSecondary hover:text-mac-textPrimary transition-colors cursor-pointer"
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 text-mac-textSecondary hover:text-mac-textPrimary transition-colors cursor-pointer"
           >
             <Plus size={14} />
           </button>
@@ -682,7 +860,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
       {/* 根目录新建文件夹输入行 */}
       {isCreatingRootFolder && (
         <div className="px-3 py-1">
-          <div className="flex items-center gap-1.5 bg-white rounded-lg border border-mac-accentBlue/40 px-2 py-1 shadow-sm">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 rounded-lg border border-mac-accentBlue/40 dark:border-blue-500/30 px-2 py-1 shadow-sm">
             <Folder size={13} className="text-mac-accentAmber flex-shrink-0" />
             <input
               type="text"
@@ -717,7 +895,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
             <div className="px-2 py-1 text-[10px] font-semibold text-mac-textMuted uppercase">
               未归类提示词 ({rootPrompts.length})
             </div>
-            {rootPrompts.map((prompt) => renderPromptItem(prompt, 0))}
+            {renderPromptTree(rootPrompts, 0)}
           </div>
         )}
 
@@ -733,11 +911,11 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
         <div
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 w-52 bg-white/95 backdrop-blur-md rounded-xl shadow-macModal border border-[#E5E2D9] py-1 text-xs text-[#2C2A29] animate-scale-in select-none"
+          className="fixed z-50 w-52 bg-white/95 dark:bg-[#1c1c21]/95 backdrop-blur-md rounded-xl shadow-macModal border border-[#E5E2D9] dark:border-white/10 py-1 text-xs text-[#2C2A29] dark:text-zinc-200 animate-scale-in select-none"
         >
           {contextMenu.type === 'folder' ? (
             <>
-              <div className="px-3 py-1 text-[10px] font-bold text-[#6E6B65] uppercase border-b border-[#E5E2D9]/60 truncate">
+              <div className="px-3 py-1 text-[10px] font-bold text-[#6E6B65] dark:text-zinc-400 uppercase border-b border-[#E5E2D9]/60 dark:border-white/10 truncate">
                 文件夹：{folders.find((f) => f.id === contextMenu.targetId)?.name || '未命名'}
               </div>
               <button
@@ -778,7 +956,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-mac-accentBlue/10 hover:text-mac-accentBlue flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Box size={13} className="text-indigo-600" />
+                <Box size={13} className="text-indigo-600 dark:text-indigo-400" />
                 <span>导出项目提示词包...</span>
               </button>
               <button
@@ -791,7 +969,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 <SlidersHorizontal size={13} className="text-mac-accentBlue" />
                 <span>配置项目上下文与规则</span>
               </button>
-              <div className="my-1 border-t border-[#E5E2D9]/70" />
+              <div className="my-1 border-t border-[#E5E2D9]/70 dark:border-white/10" />
               <button
                 onClick={async () => {
                   const folder = folders.find((f) => f.id === contextMenu.targetId);
@@ -800,7 +978,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                   }
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-rose-50 text-rose-600 flex items-center gap-2 transition-colors cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <Trash2 size={13} />
                 <span>删除文件夹</span>
@@ -808,7 +986,7 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
             </>
           ) : (
             <>
-              <div className="px-3 py-1 text-[10px] font-bold text-[#6E6B65] uppercase border-b border-[#E5E2D9]/60 truncate">
+              <div className="px-3 py-1 text-[10px] font-bold text-[#6E6B65] dark:text-zinc-400 uppercase border-b border-[#E5E2D9]/60 dark:border-white/10 truncate">
                 提示词：{prompts.find((p) => p.id === contextMenu.targetId)?.title || '未命名'}
               </div>
               <button
@@ -829,8 +1007,18 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-mac-accentBlue/10 hover:text-mac-accentBlue flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Copy size={13} className="text-purple-600" />
+                <Copy size={13} className="text-purple-600 dark:text-purple-400" />
                 <span>复制副本 (Duplicate)</span>
+              </button>
+              <button
+                onClick={async () => {
+                  await createChildPrompt(contextMenu.targetId);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-950/30 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <GitFork size={13} className="text-purple-500 dark:text-purple-400" />
+                <span>继续链路 (创建子提示词)</span>
               </button>
               <button
                 onClick={() => {
@@ -850,19 +1038,25 @@ ${prompt.originalDraft && prompt.originalDraft !== prompt.currentOptimized ? `##
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-mac-accentBlue/10 hover:text-mac-accentBlue flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Download size={13} className="text-emerald-600" />
+                <Download size={13} className="text-emerald-600 dark:text-emerald-400" />
                 <span>导出 Markdown 单文件</span>
               </button>
-              <div className="my-1 border-t border-[#E5E2D9]/70" />
+              <div className="my-1 border-t border-[#E5E2D9]/70 dark:border-white/10" />
               <button
                 onClick={async () => {
                   const prompt = prompts.find((p) => p.id === contextMenu.targetId);
-                  if (prompt && (await confirmAction(`确定彻底删除提示词「${prompt.title}」吗？`))) {
-                    deletePrompt(prompt.id);
+                  if (prompt) {
+                    const descendants = getDescendantCount(prompt.id);
+                    const message = descendants > 0
+                      ? `确定删除「${prompt.title}」及其后续 ${descendants} 个下游链路提示词吗？整条链路将一并删除。`
+                      : `确定彻底删除提示词「${prompt.title}」吗？`;
+                    if (await confirmAction(message)) {
+                      deletePrompt(prompt.id);
+                    }
                   }
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3 py-1.5 hover:bg-rose-50 text-rose-600 flex items-center gap-2 transition-colors cursor-pointer"
+                className="w-full text-left px-3 py-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <Trash2 size={13} />
                 <span>彻底删除</span>

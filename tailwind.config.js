@@ -9,15 +9,15 @@ export default {
     extend: {
       colors: {
         mac: {
-          canvas: "#FAF9F6",
-          canvasAlt: "#F4F2EB",
-          surface: "rgba(255, 255, 255, 0.78)",
-          surfaceElevated: "#FFFFFF",
-          border: "rgba(0, 0, 0, 0.06)",
-          borderHover: "rgba(0, 0, 0, 0.12)",
-          textPrimary: "#1D1D1F",
-          textSecondary: "#48484A",
-          textMuted: "#6E6E73",
+          canvas: "var(--mac-canvas, #FAF9F6)",
+          canvasAlt: "var(--mac-canvas-alt, #F4F2EB)",
+          surface: "var(--mac-surface, rgba(255, 255, 255, 0.78))",
+          surfaceElevated: "var(--mac-surface-elevated, #FFFFFF)",
+          border: "var(--mac-border, rgba(0, 0, 0, 0.06))",
+          borderHover: "var(--mac-border-hover, rgba(0, 0, 0, 0.12))",
+          textPrimary: "var(--mac-text-primary, #1D1D1F)",
+          textSecondary: "var(--mac-text-secondary, #48484A)",
+          textMuted: "var(--mac-text-muted, #6E6E73)",
           accentBlue: "#0A84FF",
           accentBlueHover: "#0071E3",
           accentGreen: "#34C759",
@@ -59,6 +59,12 @@ export default {
         macElevated: "0 12px 36px -4px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.04)",
         macModal: "0 24px 60px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08)",
         macHover: "0 8px 24px -4px rgba(0, 0, 0, 0.06)",
+        'mac-glow-blue': '0 0 20px -2px rgba(10, 132, 255, 0.35)',
+        'mac-glow-emerald': '0 0 20px -2px rgba(52, 199, 89, 0.35)',
+        'mac-glow-purple': '0 0 20px -2px rgba(175, 82, 222, 0.35)',
+      },
+      transitionTimingFunction: {
+        'apple-ease': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
       keyframes: {
         bounceSubtle: {

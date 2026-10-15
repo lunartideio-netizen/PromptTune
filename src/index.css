@@ -5,20 +5,43 @@
 @layer base {
   :root {
     color-scheme: light;
+    --mac-canvas: #FAF9F6;
+    --mac-canvas-alt: #F4F2EB;
+    --mac-surface: rgba(255, 255, 255, 0.85);
+    --mac-surface-elevated: #FFFFFF;
+    --mac-border: rgba(0, 0, 0, 0.08);
+    --mac-border-hover: rgba(0, 0, 0, 0.15);
+    --mac-text-primary: #1D1D1F;
+    --mac-text-secondary: #48484A;
+    --mac-text-muted: #6E6E73;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --mac-canvas: #18181B;
+    --mac-canvas-alt: #1E1E22;
+    --mac-surface: rgba(36, 36, 42, 0.85);
+    --mac-surface-elevated: #2C2C34;
+    --mac-border: rgba(255, 255, 255, 0.09);
+    --mac-border-hover: rgba(255, 255, 255, 0.18);
+    --mac-text-primary: #F4F4F6;
+    --mac-text-secondary: #A0A0A8;
+    --mac-text-muted: #72727D;
   }
 
   body {
-    background-color: #FAF9F6;
-    color: #1D1D1F;
+    background-color: var(--mac-canvas);
+    color: var(--mac-text-primary);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     user-select: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   ::selection {
-    background-color: rgba(10, 132, 255, 0.2);
-    color: #1D1D1F;
+    background-color: rgba(10, 132, 255, 0.25);
+    color: inherit;
   }
 }
 
@@ -41,12 +64,36 @@
   background: rgba(0, 0, 0, 0.22);
 }
 
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Hide scrollbar utility */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Glassmorphism utility */
 .mac-glass {
   background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+html.dark .mac-glass {
+  background: rgba(30, 30, 36, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 @keyframes fadeIn {
@@ -56,4 +103,21 @@
 
 .animate-fade-in {
   animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* macOS WebKit 原生窗口拖拽增强 */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region="false"],
+button,
+input,
+textarea,
+select,
+a,
+[role="button"],
+[role="tab"],
+[role="separator"] {
+  -webkit-app-region: no-drag;
 }

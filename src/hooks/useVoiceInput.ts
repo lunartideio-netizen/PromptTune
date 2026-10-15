@@ -76,23 +76,34 @@ export const useVoiceInput = () => {
     setVolume(0);
   };
 
-  // 方案 1：Whisper 音频转写调用
+  // 方案 1：Whisper 音频转写调用 (支持独立端点配置与智能降级)
   const transcribeWithWhisper = async (blob: Blob) => {
     const apiConfig = useAppStore.getState().apiConfig;
-    const baseUrl = apiConfig.baseUrl?.trim() || '';
-    if (!baseUrl) return;
+    
+    // 优先采用用户单独配置的语音转写端点；若未配则仅在明确为 OpenAI/Groq 等支持音频接口的端点时尝试 (OPT-6)
+    const configuredSttBase = (apiConfig.sttBaseUrl || '').trim();
+    const isSupportedDefault = apiConfig.provider === 'openai' || 
+      apiConfig.baseUrl?.includes('api.openai.com') || 
+      apiConfig.baseUrl?.includes('api.groq.com');
+      
+    const effectiveBaseUrl = configuredSttBase || (isSupportedDefault ? apiConfig.baseUrl?.trim() : '');
+    if (!effectiveBaseUrl) {
+      // 未配置专用 STT 端点且非原生支持端点，纯靠 Web Speech API 处理，不发起徒劳的 404 网络请求
+      return;
+    }
 
-    const endpoint = `${baseUrl.replace(/\/chat\/completions$/, '').replace(/\/+$/, '')}/audio/transcriptions`;
+    const endpoint = `${effectiveBaseUrl.replace(/\/chat\/completions$/, '').replace(/\/+$/, '')}/audio/transcriptions`;
     const formData = new FormData();
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
     formData.append('file', blob, `voice_input.${ext}`);
-    formData.append('model', 'whisper-1');
+    formData.append('model', apiConfig.sttModel?.trim() || 'whisper-1');
     formData.append('language', 'zh');
 
     try {
       const headers: Record<string, string> = {};
-      if (apiConfig.apiKey?.trim()) {
-        headers['Authorization'] = `Bearer ${apiConfig.apiKey.trim()}`;
+      const effectiveKey = (apiConfig.sttApiKey || apiConfig.apiKey || '').trim();
+      if (effectiveKey) {
+        headers['Authorization'] = `Bearer ${effectiveKey}`;
       }
 
       useAppStore.getState().showToast('🎙️ 录音结束，正在通过 Whisper 转写文本...', 'info');
@@ -334,6 +345,8 @@ export const useVoiceInput = () => {
 
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             let smoothedVolume = 0;
+            let lastVolTime = 0;
+            let lastVolVal = 0;
 
             const analyze = () => {
               if (!isUserActiveRef.current || !analyserRef.current) return;
@@ -345,7 +358,18 @@ export const useVoiceInput = () => {
               const avg = sum / dataArray.length;
               const rawVol = Math.min(100, Math.round((avg / 60) * 100));
               smoothedVolume = smoothedVolume * 0.6 + rawVol * 0.4;
-              setVolume(Math.round(smoothedVolume));
+              const roundedVol = Math.round(smoothedVolume);
+
+              const now = performance.now();
+              // 节流至最大 20fps (~50ms)，且仅在音量变化超过 2% 或静音清零时触发组件重渲染 (OPT-4)
+              if (
+                now - lastVolTime > 50 && 
+                (Math.abs(roundedVol - lastVolVal) >= 2 || (roundedVol === 0 && lastVolVal !== 0))
+              ) {
+                lastVolTime = now;
+                lastVolVal = roundedVol;
+                setVolume(roundedVol);
+              }
 
               if (rawVol > 6) {
                 resetSilenceTimer();

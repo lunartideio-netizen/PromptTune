@@ -9,7 +9,8 @@ import {
   OptimizationTurn,
   PromptVariable,
   SkillItem,
-  SkillCategory 
+  SkillCategory,
+  CustomFramework 
 } from '../types';
 import { db, DEFAULT_API_CONFIG, initDatabase } from '../services/db';
 import { extractVariablesFromText, syncVariables, extractPromptReferences, extractSmartTitleFromDraft } from '../services/llmService';
@@ -31,6 +32,11 @@ interface AppStoreState {
   setIsSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
 
+  // Theme (Dark / Light / System)
+  theme: 'system' | 'light' | 'dark';
+  setTheme: (theme: 'system' | 'light' | 'dark') => void;
+  toggleTheme: () => void;
+
   // Modals
   isSettingsOpen: boolean;
   contextModalFolderId: string | null;
@@ -40,6 +46,11 @@ interface AppStoreState {
   // Global Toast
   toast: { message: string; type?: 'info' | 'error' | 'success' } | null;
   showToast: (message: string, type?: 'info' | 'error' | 'success') => void;
+
+  // Custom Frameworks (FEAT-5)
+  customFrameworks: CustomFramework[];
+  addCustomFramework: (fw: Omit<CustomFramework, 'isCustom'>) => Promise<void>;
+  deleteCustomFramework: (id: string) => Promise<void>;
 
   // Quick Scratchpad (独立单次优化台 / 单独问)
   isScratchpadActive: boolean;
@@ -79,6 +90,8 @@ interface AppStoreState {
   // CRUD Prompts
   createPrompt: (folderId: string | null, title?: string) => Promise<string>;
   updatePrompt: (id: string, updates: Partial<PromptItem>) => Promise<void>;
+  /** 基于父提示词创建链路子节点 */
+  createChildPrompt: (parentPromptId: string, title?: string) => Promise<string>;
   renamePrompt: (promptId: string, newTitle: string) => Promise<void>;
   duplicatePrompt: (promptId: string) => Promise<string>;
   movePromptToFolder: (promptId: string, targetFolderId: string | null) => Promise<void>;
@@ -218,6 +231,25 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     set({ isSidebarCollapsed: next });
   },
 
+  theme: (() => {
+    try {
+      const stored = localStorage.getItem('prompttune_theme_mode');
+      if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+    } catch {}
+    return 'system';
+  })(),
+  setTheme: (theme: 'system' | 'light' | 'dark') => {
+    try {
+      localStorage.setItem('prompttune_theme_mode', theme);
+    } catch {}
+    set({ theme });
+  },
+  toggleTheme: () => {
+    const current = get().theme;
+    const next = current === 'dark' ? 'light' : current === 'light' ? 'system' : 'dark';
+    get().setTheme(next);
+  },
+
   isSettingsOpen: false,
   contextModalFolderId: null,
   isSkillHunterOpen: false,
@@ -230,6 +262,20 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     setTimeout(() => {
       set((state) => (state.toast?.message === message ? { toast: null } : {}));
     }, 3800);
+  },
+
+  customFrameworks: [],
+  addCustomFramework: async (fw) => {
+    const next = [...get().customFrameworks.filter((f) => f.id !== fw.id), { ...fw, isCustom: true }];
+    await db.settings.put({ key: 'custom_frameworks', value: next });
+    set({ customFrameworks: next });
+    get().showToast(`已成功添加框架「${fw.name}」`, 'success');
+  },
+  deleteCustomFramework: async (id) => {
+    const next = get().customFrameworks.filter((f) => f.id !== id);
+    await db.settings.put({ key: 'custom_frameworks', value: next });
+    set({ customFrameworks: next });
+    get().showToast('已删除自定义框架', 'info');
   },
 
   saveSkill: async (skill) => {
@@ -332,10 +378,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   setIsScratchpadActive: (active) => set({ isScratchpadActive: active }),
   setScratchpadDraft: (draft) => {
-    set({ scratchpadDraft: draft });
     const { scratchpadOptimized, scratchpadVariables } = get();
     const synced = syncVariables(scratchpadVariables, draft + '\n' + (scratchpadOptimized || ''));
-    set({ scratchpadVariables: synced });
+    set({ scratchpadDraft: draft, scratchpadVariables: synced });
     saveScratchpadSnapshot(get());
   },
   setScratchpadOptimized: (opt) => {
@@ -407,7 +452,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         }] : []);
 
     const newPrompt: PromptItem = {
-      id: `prompt-${Date.now()}`,
+      id: `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       folderId,
       title: finalTitle,
       originalDraft: scratchpadDraft,
@@ -435,14 +480,16 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   initialize: async () => {
     await initDatabase();
-    const [folders, prompts, settingsRow, skills] = await Promise.all([
+    const [folders, prompts, settingsRow, skills, customFwRow] = await Promise.all([
       db.folders.orderBy('order').toArray(),
       db.prompts.toArray(),
       db.settings.get('api_config'),
       db.skills.toArray(),
+      db.settings.get('custom_frameworks'),
     ]);
 
     const apiConfig = settingsRow?.value || DEFAULT_API_CONFIG;
+    const customFrameworks = (customFwRow?.value as CustomFramework[]) || [];
     const hasPrompts = prompts.length > 0;
     const savedScratchpad = loadScratchpadSnapshot();
     const hasScratchpadContent = savedScratchpad && Boolean(
@@ -456,6 +503,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       prompts,
       skills,
       apiConfig,
+      customFrameworks,
       activePromptId: hasPrompts ? (hasScratchpadContent ? null : prompts[0].id) : null,
       isScratchpadActive: !hasPrompts || Boolean(hasScratchpadContent),
       ...(savedScratchpad ? {
@@ -509,7 +557,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   createFolder: async (parentId, name) => {
     const newFolder: Folder = {
-      id: `folder-${Date.now()}`,
+      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       parentId,
       name,
       icon: 'Folder',
@@ -594,7 +642,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   createPrompt: async (folderId, title = '未命名提示词') => {
     const newPrompt: PromptItem = {
-      id: `prompt-${Date.now()}`,
+      id: `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       folderId,
       title,
       originalDraft: '',
@@ -617,12 +665,59 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     return newPrompt.id;
   },
 
+  createChildPrompt: async (parentPromptId, title) => {
+    const parent = get().prompts.find((p) => p.id === parentPromptId);
+    if (!parent) throw new Error('父提示词不存在');
+    
+    // 计算当前处于链路的第几级
+    let level = 2;
+    let curr = parent;
+    const visited = new Set<string>();
+    while (curr.parentPromptId && !visited.has(curr.parentPromptId)) {
+      visited.add(curr.parentPromptId);
+      const ancestor = get().prompts.find((p) => p.id === curr.parentPromptId);
+      if (!ancestor) break;
+      level++;
+      curr = ancestor;
+    }
+
+    const baseTitle = parent.title.replace(/ · (步骤\d+|续.*)$/, '');
+    const childTitle = title || `${baseTitle} · 步骤${level}`;
+    const inheritedDraft = '{{@' + parent.title + '}}\n\n';
+    const newPrompt = {
+      id: `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-c`,
+      folderId: parent.folderId,
+      parentPromptId,
+      title: childTitle,
+      originalDraft: inheritedDraft,
+      currentOptimized: '',
+      framework: parent.framework,
+      variables: [],
+      versions: [],
+      turns: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await db.prompts.add(newPrompt);
+    set((state) => ({
+      prompts: [newPrompt, ...state.prompts],
+      activePromptId: newPrompt.id,
+      isScratchpadActive: false,
+      activeTab: 'optimize',
+    }));
+    return newPrompt.id;
+  },
+
   updatePrompt: async (id, updates) => {
     const updated = { ...updates, updatedAt: Date.now() };
-    await db.prompts.update(id, updated);
     set((state) => ({
       prompts: state.prompts.map((p) => (p.id === id ? { ...p, ...updated } : p)),
     }));
+    try {
+      await db.prompts.update(id, updated);
+    } catch (err) {
+      console.error('[PromptTune] 数据库更新失败:', err);
+    }
   },
 
   renamePrompt: async (promptId, newTitle) => {
@@ -661,10 +756,26 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   },
 
   deletePrompt: async (id) => {
-    await db.prompts.delete(id);
+    // 级联删除：递归收集目标提示词及其所有下游子链路与后续分支节点
+    const allPrompts = get().prompts;
+    const toDeleteIds = new Set<string>([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of allPrompts) {
+        if (p.parentPromptId && toDeleteIds.has(p.parentPromptId) && !toDeleteIds.has(p.id)) {
+          toDeleteIds.add(p.id);
+          changed = true;
+        }
+      }
+    }
+
+    const toDeleteArray = Array.from(toDeleteIds);
+    await db.prompts.bulkDelete(toDeleteArray);
+
     set((state) => {
-      const remaining = state.prompts.filter((p) => p.id !== id);
-      const isCurrentActiveDeleted = state.activePromptId === id;
+      const remaining = state.prompts.filter((p) => !toDeleteIds.has(p.id));
+      const isCurrentActiveDeleted = state.activePromptId ? toDeleteIds.has(state.activePromptId) : false;
       const nextActiveId = isCurrentActiveDeleted ? (remaining[0]?.id ?? null) : state.activePromptId;
       return {
         prompts: remaining,
